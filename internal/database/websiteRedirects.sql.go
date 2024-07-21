@@ -54,6 +54,18 @@ func (q *Queries) GetWebsiteRedirect(ctx context.Context, id int64) (WebsiteRedi
 	return i, err
 }
 
+const getWebsiteRedirectByRedirectUrl = `-- name: GetWebsiteRedirectByRedirectUrl :one
+SELECT originalUrl FROM websiteRedirects
+WHERE redirectUrl = ? LIMIT 1
+`
+
+func (q *Queries) GetWebsiteRedirectByRedirectUrl(ctx context.Context, redirecturl string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getWebsiteRedirectByRedirectUrl, redirecturl)
+	var originalurl string
+	err := row.Scan(&originalurl)
+	return originalurl, err
+}
+
 const listWebsiteRedirects = `-- name: ListWebsiteRedirects :many
 SELECT id, originalurl, redirecturl, created_at, updated_at FROM websiteRedirects
 ORDER BY originalUrl

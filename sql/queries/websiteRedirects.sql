@@ -13,3 +13,7 @@ INSERT INTO websiteRedirects (
   ?, ?
 )
 RETURNING *;
+
+-- name: GetWebsiteRedirectByRedirectUrl :one
+SELECT originalUrl FROM websiteRedirects
+WHERE redirectUrl = ? LIMIT 1;

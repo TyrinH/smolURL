@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/TyrinH/smolURL/internal/database"
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,7 @@ import (
 )
 
 type websiteRedirect struct {
+	ReceivedUrl string `json:"website"`
 	originalUrl string
 	redirectUrl string
 }
@@ -44,13 +46,22 @@ func main() {
 			"message": "pong",
 		})
 	})
-	r.POST("/website/:url", func(c *gin.Context) {
+
+	r.POST("/website", func(c *gin.Context) {
 		websiteRedirect := websiteRedirect{}
-		websiteRedirect.originalUrl = c.Param("url")
+		c.ShouldBind(&websiteRedirect)
+		if err != nil {
+			log.Println(err)
+		}
+		if (!strings.Contains(websiteRedirect.ReceivedUrl, "http://") && !strings.Contains(websiteRedirect.ReceivedUrl, "https://")) {
+			websiteRedirect.originalUrl = fmt.Sprintf("http://%s", websiteRedirect.ReceivedUrl)
+		} else {
+			websiteRedirect.originalUrl = websiteRedirect.ReceivedUrl
+		}
 		data := []byte(websiteRedirect.originalUrl)
 		encodedString := base64.StdEncoding.EncodeToString(data)
-		encodedUrlRedirect := encodedString[:7]
-		websiteRedirect.redirectUrl = fmt.Sprintf("localhost:8080/%s", encodedUrlRedirect)
+		encodedUrlRedirect := strings.ReplaceAll(encodedString[len(encodedString)-9:],"=","")
+		websiteRedirect.redirectUrl = encodedUrlRedirect
 		createdRedirect, err := createWebsiteRedirect(db, websiteRedirect)
 		if err != nil {
 			log.Println(err)
@@ -59,6 +70,16 @@ func main() {
 			"message": "received",
 			"redirectUrl": createdRedirect.Redirecturl,
 		})
+	})
+	r.GET("/:redirect", func(c *gin.Context) {
+		redirect, err := fetchWebsiteUrl(db, c.Param("redirect"))
+		if err != nil {
+			 c.JSON(http.StatusInternalServerError, gin.H{
+				"message": err,
+			})
+			return
+		}
+		c.Redirect(http.StatusMovedPermanently, redirect)
 	})
 	r.Run()
 
@@ -92,4 +113,16 @@ func createWebsiteRedirect(db * sql.DB, redirect websiteRedirect)( database.Webs
 	})
 	return insertedRedirect, err
 
+}
+
+func fetchWebsiteUrl(db * sql.DB, redirect string) (string, error) {
+	ctx := context.Background()
+
+	queries := database.New(db)
+
+	fetchedUrl, err := queries.GetWebsiteRedirectByRedirectUrl(ctx, redirect)
+	if err != nil {
+		log.Println(err)
+	}
+	return fetchedUrl, err
 }
