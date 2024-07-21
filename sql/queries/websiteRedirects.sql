@@ -17,3 +17,7 @@ RETURNING *;
 -- name: GetWebsiteRedirectByRedirectUrl :one
 SELECT originalUrl FROM websiteRedirects
 WHERE redirectUrl = ? LIMIT 1;
+
+-- name: CheckIfWebsiteRedirectExists :one
+SELECT * FROM websiteRedirects
+WHERE originalUrl = ? OR redirectUrl = ? LIMIT 1;

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,11 +30,11 @@ func main() {
 	dbUrl := os.Getenv("TURSO_DATABASE_URL")
 	url := fmt.Sprintf("%s?authToken=%s", dbUrl, token)
 
-  db, err := sql.Open("libsql", url)
-  if err != nil {
-    fmt.Fprintf(os.Stderr, "failed to open db %s: %s", url, err)
-    os.Exit(1)
-  }
+	db, err := sql.Open("libsql", url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open db %s: %s", url, err)
+		os.Exit(1)
+	}
 	defer db.Close()
 	createErr := createWebsiteUrlTable(db)
 	if createErr != nil {
@@ -53,26 +54,35 @@ func main() {
 		if err != nil {
 			log.Println(err)
 		}
-		if (!strings.Contains(websiteRedirect.ReceivedUrl, "http://") && !strings.Contains(websiteRedirect.ReceivedUrl, "https://")) {
+		if !strings.Contains(websiteRedirect.ReceivedUrl, "http://") && !strings.Contains(websiteRedirect.ReceivedUrl, "https://") {
 			websiteRedirect.originalUrl = fmt.Sprintf("http://%s", websiteRedirect.ReceivedUrl)
 		} else {
 			websiteRedirect.originalUrl = websiteRedirect.ReceivedUrl
 		}
 		data := []byte(websiteRedirect.originalUrl)
 		encodedString := base64.StdEncoding.EncodeToString(data)
-		encodedUrlRedirect := strings.ReplaceAll(encodedString[len(encodedString)-9:],"=","")
+		encodedUrlRedirect := strings.ReplaceAll(encodedString[len(encodedString)-9:], "=", "")
 		websiteRedirect.redirectUrl = encodedUrlRedirect
-		createdRedirect, err := createWebsiteRedirect(db, websiteRedirect)
-		if err != nil {
-			log.Println(err)
+		createdRedirect, createWebsiteErr := createWebsiteRedirect(db, websiteRedirect)
+		if createWebsiteErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "This redirect already exist.",
+			})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"message": "received",
+			"message":     "received",
 			"redirectUrl": createdRedirect.Redirecturl,
 		})
 	})
 	r.GET("/:redirect", func(c *gin.Context) {
 		redirect, err := fetchWebsiteUrl(db, c.Param("redirect"))
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{
+			   "message": "This website does not exist.",
+		   })
+		   return
+	   }
 		if err != nil {
 			 c.JSON(http.StatusInternalServerError, gin.H{
 				"message": err,
@@ -93,19 +103,28 @@ type User struct {
 //go:embed sql/schema.sql
 var ddl string
 
-func createWebsiteUrlTable(db * sql.DB) error{
+func createWebsiteUrlTable(db *sql.DB) error {
 	ctx := context.Background()
 
-		// create tables
-		if _, err := db.ExecContext(ctx, ddl); err != nil {
-			return err
-		}
-		return nil
+	// create tables
+	if _, err := db.ExecContext(ctx, ddl); err != nil {
+		return err
+	}
+	return nil
 }
 
-func createWebsiteRedirect(db * sql.DB, redirect websiteRedirect)( database.WebsiteRedirect, error) {
+func createWebsiteRedirect(db *sql.DB, redirect websiteRedirect) (database.WebsiteRedirect, error) {
 	ctx := context.Background()
 	queries := database.New(db)
+
+	foundRedirect, _ := queries.CheckIfWebsiteRedirectExists(ctx, database.CheckIfWebsiteRedirectExistsParams{
+		Originalurl: redirect.originalUrl,
+		Redirecturl: redirect.redirectUrl,
+	})
+	if foundRedirect.ID != 0 {
+		err := errors.New("duplicate redirect attempted to be added")
+		return database.WebsiteRedirect{}, err
+	}
 
 	insertedRedirect, err := queries.CreateWebsiteRedirect(ctx, database.CreateWebsiteRedirectParams{
 		Originalurl: redirect.originalUrl,
@@ -115,7 +134,7 @@ func createWebsiteRedirect(db * sql.DB, redirect websiteRedirect)( database.Webs
 
 }
 
-func fetchWebsiteUrl(db * sql.DB, redirect string) (string, error) {
+func fetchWebsiteUrl(db *sql.DB, redirect string) (string, error) {
 	ctx := context.Background()
 
 	queries := database.New(db)

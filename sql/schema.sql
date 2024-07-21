@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS authors (
 CREATE TABLE IF NOT EXISTS websiteRedirects (
     id   INTEGER PRIMARY KEY,
     originalUrl text    NOT NULL,
-    redirectUrl  text    NOT NULL,
+    redirectUrl  text    NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );

@@ -9,6 +9,29 @@ import (
 	"context"
 )
 
+const checkIfWebsiteRedirectExists = `-- name: CheckIfWebsiteRedirectExists :one
+SELECT id, originalurl, redirecturl, created_at, updated_at FROM websiteRedirects
+WHERE originalUrl = ? OR redirectUrl = ? LIMIT 1
+`
+
+type CheckIfWebsiteRedirectExistsParams struct {
+	Originalurl string
+	Redirecturl string
+}
+
+func (q *Queries) CheckIfWebsiteRedirectExists(ctx context.Context, arg CheckIfWebsiteRedirectExistsParams) (WebsiteRedirect, error) {
+	row := q.db.QueryRowContext(ctx, checkIfWebsiteRedirectExists, arg.Originalurl, arg.Redirecturl)
+	var i WebsiteRedirect
+	err := row.Scan(
+		&i.ID,
+		&i.Originalurl,
+		&i.Redirecturl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createWebsiteRedirect = `-- name: CreateWebsiteRedirect :one
 INSERT INTO websiteRedirects (
   originalUrl, redirectUrl
